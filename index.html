@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+  <meta charset="utf-8">
+  <title>Python 2.7.4</title>
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="">
+  <meta name="author" content="">
+  <meta name="keywords" content="">
+  
+  <link rel="stylesheet" type="text/css" media="all" href="//cdnjs.cloudflare.com/ajax/libs/foundation/5.5.1/css/foundation.min.css">
+  <link rel="stylesheet" type="text/css" media="all" href="//cdnjs.cloudflare.com/ajax/libs/font-awesome/4.3.0/css/font-awesome.min.css">
+  
+  <style type="text/css">
+    #console {
+      height: 400px;
+      position:relative;
+      background-color: black;
+      border: 2px solid #CCC;
+      margin: 0 auto;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      color: white;
+    }
+    ''
+    #console pre {
+      background-color: white;
+      border: none;
+    }
+
+    #editor { 
+      height: 360px;
+      position: relative;
+    }
+
+    .jqconsole {
+      padding: 10px;
+      padding-bottom: 10px;
+    }
+    .jqconsole-cursor {
+      background-color: #999;
+    }
+    .jqconsole-blurred .jqconsole-cursor {
+      background-color: #666;
+    }
+    .jqconsole-error {
+
+    }
+    .jqconsole-prompt {
+      color: white;
+    }
+    .jqconsole-old-prompt {
+      color: gray;
+      font-weight: normal;
+    }
+    .jqconsole-input {
+      color: white;
+    }
+    .jqconsole-old-input {
+      color: gray;
+      font-weight: normal;
+    }
+    .brace {
+      color: #00FFFF;
+    }
+    .paran {
+      color: #FF00FF;
+    }
+    .bracket {
+      color: #FFFF00;
+    }
+    .jqconsole-composition {
+      background-color: red;
+    }
+
+    #toolbar {
+      height: 40px;
+    }
+  </style>
+</head>
+
+
+<body>
+  <div id="hero" class="row">
+    <div class="small-12 columns">
+      <h2>Python 2.7.4</h2>
+      <p class="subheader">Yep, it's Python.</p>
+    </div>
+  </div>
+  <div class="row">
+    <div class="medium-6 columns">
+      <div id="toolbar"><a id="run"><i class="fa fa-play"></i>&nbsp;Run</a></div>
+      <div id="editor"></div>
+    </div>
+    <div class="medium-6 columns">
+      <div id="console" tabindex=0></div>
+    </div>
+  </div>
+
+  <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
+  <script type="text/javascript" src="/bower_components/jq-console/jqconsole.min.js"></script>
+  <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/ace/1.1.9/ace.js"></script>
+  <script type="text/javascript">
+  $(function () {
+    "use strict";
+
+    var repl   = $("#console").jqconsole("Preparing for awesomeness...", ">>> ")
+      , editor = ace.edit("editor")
+      , loaded = false
+      , evaluating = false
+      , inMultilineString = false
+      , lastOutput = undefined
+      , loadingInterval = undefined
+      , runPressed = false
+      , onInput = function(value) {
+          evaluating = true;
+          lastOutput = undefined;
+          worker.postMessage({
+              type  : "evaluate"
+            , value : value
+          });
+        }
+      , onOutput = function(value) {
+          lastOutput = value;
+          repl.Write(value, "jqconsole-output");
+        }
+      , onResult = function(value) {
+          evaluating = false;
+
+          if (value !== null && !runPressed) {
+            repl.Write(value + "\n", "jqconsole-output");
+          }
+          else if (lastOutput !== undefined
+                   && lastOutput.charAt(lastOutput.length - 1) !== "\n") {
+            repl.Write("\n", "jqconsole-output");
+          }
+
+          if (runPressed) {
+            runPressed = false;
+            $('#run i').removeClass('fa-spin fa-spinner').addClass('fa-play');
+          }
+
+          startPrompt();
+        }
+      , onError = function() {
+          if (runPressed) {
+            runPressed = false;
+            $('#run i').removeClass('fa-spin fa-spinner').addClass('fa-play');
+            repl.Write(value + "\n", "jqconsole-output");
+          }
+
+          startPrompt();
+        }
+      , onReady = function() {
+          clearInterval(loadingInterval);
+          handlers.ready = onReset;
+          repl.Write("Ready!" + "\n", "jqconsole-output");
+          startPrompt();
+          editor.setReadOnly(false);
+          editor.focus();
+        }
+      , onReset = function() {
+          editor.setReadOnly(true);
+          clearInterval(loadingInterval);
+          repl.Write("\n", "jqconsole-output");
+          startPrompt();
+      }
+      , onBusy = function() {
+          console.log("busy...");
+        }
+      , handlers = {
+            "output"  : onOutput
+          , "result"  : onResult
+          , "ready"   : onReady
+          , "busy"    : onBusy
+          , "error"   : onError
+          , "console" : function(values) {
+              console.log.apply(console, values);
+            }
+        }
+      , onMessage = function(e) {
+          var type = e.data && e.data.type;
+          if (type && handlers[type]) {
+            handlers[type](e.data.value);
+          }
+        }
+      , checkMultiline = function(input) {
+          var indent, last_line, lines;
+          lines = input.split("\n");
+          if (lines.length === 0) {
+            return 0;
+          }
+          else {
+            last_line = lines[lines.length - 1];
+            indent = last_line.match(/^\s*/)[0];
+            last_line = lines[lines.length - 1].replace(/\s+$/, "");
+            if (/"""/.test(last_line) && !/""".*"""/.test(last_line)) {
+              inMultilineString = !inMultilineString;
+            }
+
+            if (inMultilineString) {
+              return 0;
+            }
+            else if (last_line[last_line.length - 1] === ":") {
+              return 1;
+            }
+            else if (indent.length && last_line && last_line[last_line.length - 1].length !== 0) {
+              return 0;
+            }
+            else {
+              return false;
+            }
+          }
+        }
+      , startPrompt = function () {
+          inMultilineString = false;
+          // Start the prompt with history enabled.
+          repl.Prompt(true, onInput, checkMultiline);
+        }
+      , startWorker = function() {
+          loadingInterval = setInterval(function() {
+            repl.Write(".");
+          }, 100);
+          worker = new Worker("/python2.7.4/worker.js");
+          worker.addEventListener("message", onMessage, false);
+          worker.addEventListener("error", function(e) {
+            repl.Write(e.message, "jqconsole-error");
+            startPrompt();
+          });
+        }
+      , worker;
+
+    repl.RegisterShortcut('K', function() {
+      this.Clear();
+    });
+
+    startWorker();
+
+    $('#run').click(function() {
+      if (runPressed) return;
+
+      $("#run i").removeClass('fa-play').addClass('fa-spin fa-spinner');
+      lastOutput = undefined;
+      runPressed = true;
+      worker.postMessage({
+          type  : "evaluate"
+        , value : editor.getValue()
+      });
+    });
+
+    editor.setReadOnly(true);
+    editor.setTheme("ace/theme/monokai");
+    editor.getSession().setMode("ace/mode/python");
+
+    var ctrlDown = false;
+    var ctrlKey = 17, vKey = 86, cKey = 67;
+
+    $(document)
+      .keydown(function(e) {
+        if (e.keyCode == ctrlKey) ctrlDown = true;
+      })
+      .keyup(function(e){
+        if (e.keyCode == ctrlKey) ctrlDown = false;
+      });
+
+    $("#console").keydown(function(e) {
+      if (ctrlDown && e.keyCode == cKey) {
+        if (repl.GetState() === "prompt") {
+          repl.SetPromptText("^C");
+          repl.AbortPrompt();
+        }
+        else {
+          repl.Write(
+              "\n^CTraceback (most recent call last):\n"
+            + "  File \"<stdin>\", line 2, in <module>\n"
+          );
+        }
+
+        if (evaluating) {
+          evaluating = false;
+          worker.terminate();
+          worker = undefined;
+          repl.Write("KeyboardInterrupt", "jqconsole-output");
+          startWorker();
+        }
+        else {
+          repl.Write("KeyboardInterrupt\n", "jqconsole-output");
+          startPrompt();
+        }
+
+        e.preventDefault();
+      };
+    });
+  });
+  </script>
+</body>
+</html>

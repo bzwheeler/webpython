@@ -1,0 +1,23 @@
+{
+  "name": "webpython",
+  "version": "1.0.0",
+  "description": "python compiled via emscripten",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bzwheeler/webpython.git"
+  },
+  "author": "bzwheeler",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/bzwheeler/webpython/issues"
+  },
+  "homepage": "https://github.com/bzwheeler/webpython",
+  "dependencies": {
+    "node-static": "^0.7.6"
+  }
+}
